@@ -1366,8 +1366,28 @@ function jsonRecord(value: unknown): Record<string, ReturnType<typeof jsonValue>
   return parsed;
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+// Carried patch (serving/daemon; ledger in dotfiles hosts/vps/paseo-daemon.conf):
+// a rejected request reaches the emit sites above as a RequestError whose
+// data.details holds the agent server's own sentence, and only the generic
+// message survived -- so every server-side failure rendered as "Internal
+// error". Prefer the details when they exist. Exported for the canary test
+// beside this file; dropped when upstream carries the details itself
+// (kobe-work/work-organisation#96 tracks the report).
+export function describeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const data =
+    typeof error === "object" && error !== null && "data" in error
+      ? (error as { data?: unknown }).data
+      : undefined;
+  const details =
+    typeof data === "object" && data !== null && "details" in data
+      ? (data as { details?: unknown }).details
+      : undefined;
+  if (typeof details === "string" && details.trim() !== "" && details !== message) {
+    const text = details.length > 4000 ? `${details.slice(0, 4000)} …` : details;
+    return message === "Internal error" ? text : `${message}: ${text}`;
+  }
+  return message;
 }
 
 function withTimeout<Value>(
