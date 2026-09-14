@@ -143,7 +143,17 @@ See [events](./events.md#follow-provider-catalog-changes) for explicit event obs
 and `requestId`. Set `background` on the workspace options; `agent.background` is rejected.
 See the [combined creation example](./agents.md#run-work-in-a-background-workspace).
 
-A workspace handle exposes `id`, `projectId`, `directory`, `name`, `status`, `current()`, `refresh()`, `setTitle(title)`, `archive()`, and `subscribe()`. Pass `null` to `setTitle` to restore the derived workspace name. Use `workspace.agents.create(options)` to create an agent without repeating the workspace ID or directory.
+A workspace handle exposes `id`, `projectId`, `directory`, `name`, `status`, `current()`, `refresh()`, `setTitle(title)`, `setLabel(label, assigned)`, `archive()`, and `subscribe()`. Pass `null` to `setTitle` to restore the derived workspace name. Use `workspace.agents.create(options)` to create an agent without repeating the workspace ID or directory.
+
+### `client.workspaces.labels`
+
+| Method                                | Result                                | Behavior                                                              |
+| ------------------------------------- | ------------------------------------- | --------------------------------------------------------------------- |
+| `list(options?)`                      | `PaseoWorkspaceLabelListResult`       | Lists the host's label catalog, or the changes since a `sync` cursor. |
+| `update({ name, newName?, color? })`  | `PaseoWorkspaceLabelUpdateResult`     | Renames a label, recolors it, or both, in one request.                |
+| `set(workspaceOrId, label, assigned)` | `PaseoWorkspaceLabelAssignmentResult` | Assigns or unassigns without first creating a handle.                 |
+
+A label is a `{ name, color }` pair, with `color` drawn from Paseo's ten-color palette. Assigning a label the host does not have yet defines it with the color given; assigning one it already has keeps the catalog's color, so `update` is the only way to recolor. Unassigning leaves the definition in place.
 
 ## `client.terminals`
 
