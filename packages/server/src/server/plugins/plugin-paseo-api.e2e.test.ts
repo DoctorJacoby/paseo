@@ -50,6 +50,12 @@ const append = defineRpc({
   output: z.object({ seq: z.number(), epoch: z.string() }),
 });
 
+const label = defineRpc({
+  name: "label",
+  input: z.object({ workspaceId: z.string(), name: z.string() }),
+  output: z.object({ catalog: z.array(z.string()), workspaceLabels: z.array(z.string()) }),
+});
+
 export default function contribute(server: PluginServerContext) {
   server.handle(create, async ({ path }, { paseo }) => {
     const workspace = await paseo.workspaces.create({
@@ -75,6 +81,16 @@ export default function contribute(server: PluginServerContext) {
       data: { status },
     }),
   );
+  server.handle(label, async ({ workspaceId, name }, { paseo }) => {
+    const assignment = await paseo.workspaces
+      .ref(workspaceId)
+      .setLabel({ name, color: "sky" }, true);
+    const catalog = await paseo.workspaces.labels.list();
+    return {
+      catalog: catalog.labels.map((entry) => entry.name),
+      workspaceLabels: assignment.workspaceLabels,
+    };
+  });
   return () => undefined;
 }`,
   );
@@ -126,12 +142,22 @@ export default function contribute(server: PluginServerContext) {
         }),
       }),
     ]);
+    await expect(
+      client.invokePluginRpc("paseo-api", "label", {
+        workspaceId: Reflect.get(created, "workspaceId"),
+        name: "Reviewed",
+      }),
+    ).resolves.toEqual({ catalog: ["Reviewed"], workspaceLabels: ["Reviewed"] });
+
     await client.removePlugin("paseo-api");
     const workspaces = await client.fetchWorkspaces();
     const agents = await client.fetchAgents();
     expect(workspaces.entries.map((workspace) => workspace.id)).toContain(
       Reflect.get(created, "workspaceId"),
     );
+    expect(
+      workspaces.entries.find((workspace) => workspace.id === Reflect.get(created, "workspaceId")),
+    ).toMatchObject({ labels: ["Reviewed"] });
     expect(agents.entries.map((entry) => entry.agent.id)).toContain(
       Reflect.get(created, "agentId"),
     );
