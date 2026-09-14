@@ -28,6 +28,7 @@ import type {
   WorkspaceDescriptorPayload,
   WorkspaceCreateRequest,
 } from "@getpaseo/protocol/messages";
+import type { WorkspaceLabelDefinition } from "@getpaseo/protocol/workspace-labels";
 import { DaemonClient, type CreateAgentRequestOptions } from "./daemon-client.js";
 import {
   createTerminalActions,
@@ -56,6 +57,9 @@ import type {
   FetchAgentTimelineProjection,
   SendMessageOptions,
   WaitForFinishResult,
+  WorkspaceLabelAssignmentPayload,
+  WorkspaceLabelListPayload,
+  WorkspaceLabelUpdatePayload,
 } from "./daemon-client.js";
 
 /**
@@ -169,6 +173,45 @@ export type PaseoWorkspaceUpdate = Extract<
 
 export type PaseoWorkspaceUpdateHandler = (update: PaseoWorkspaceUpdate) => void;
 
+export type PaseoWorkspaceLabel = WorkspaceLabelDefinition;
+
+export interface PaseoWorkspaceLabelListOptions {
+  /**
+   * Cursor from an earlier list, so the host answers with the catalog changes
+   * since that point instead of the whole catalog.
+   */
+  sync?: { generation: string; afterSeq: number };
+  requestId?: string;
+}
+
+export type PaseoWorkspaceLabelListResult = WorkspaceLabelListPayload;
+export type PaseoWorkspaceLabelAssignmentResult = WorkspaceLabelAssignmentPayload;
+export type PaseoWorkspaceLabelUpdateResult = WorkspaceLabelUpdatePayload;
+
+export interface PaseoWorkspaceLabelUpdateOptions {
+  name: string;
+  newName?: string;
+  color?: PaseoWorkspaceLabel["color"];
+  requestId?: string;
+}
+
+export interface PaseoWorkspaceLabelActions {
+  /** Lists the host's label catalog, or the changes to it since `sync`. */
+  list(options?: PaseoWorkspaceLabelListOptions): Promise<PaseoWorkspaceLabelListResult>;
+  /**
+   * Renames a label, recolors it, or both. An omitted field is left alone, and
+   * both travel in one request so an edit cannot land half-applied.
+   */
+  update(options: PaseoWorkspaceLabelUpdateOptions): Promise<PaseoWorkspaceLabelUpdateResult>;
+  /** Assigns or unassigns a label without first creating a handle. */
+  set(
+    workspace: string | PaseoWorkspaceHandle,
+    label: PaseoWorkspaceLabel,
+    assigned: boolean,
+    requestId?: string,
+  ): Promise<PaseoWorkspaceLabelAssignmentResult>;
+}
+
 export interface PaseoWorkspaceHandle {
   readonly id: string;
   readonly projectId: string | null;
@@ -182,6 +225,17 @@ export interface PaseoWorkspaceHandle {
   current(): PaseoWorkspace | null;
   refresh(options?: { requestId?: string }): Promise<PaseoWorkspace | null>;
   setTitle(title: string | null, requestId?: string): Promise<{ title: string | null }>;
+  /**
+   * Assigns or unassigns a label on this workspace. Assigning a label the host
+   * does not have yet defines it in the catalog with the color given; assigning
+   * one it already has keeps the catalog's color, so a caller cannot recolor a
+   * label by assigning it. Unassigning never removes the definition.
+   */
+  setLabel(
+    label: PaseoWorkspaceLabel,
+    assigned: boolean,
+    requestId?: string,
+  ): Promise<PaseoWorkspaceLabelAssignmentResult>;
   archive(requestId?: string): Promise<PaseoWorkspaceArchiveResult>;
   /**
    * Subscribes to already-emitted daemon workspace_update events for this id.
@@ -215,6 +269,7 @@ export interface PaseoWorkspaceActions {
     workspace: string | PaseoWorkspaceHandle,
     requestId?: string,
   ): Promise<PaseoWorkspaceArchiveResult>;
+  readonly labels: PaseoWorkspaceLabelActions;
   /**
    * Local event subscription over the low-level driver's workspace_update stream.
    * The returned function only removes this SDK listener.
@@ -720,6 +775,17 @@ export function createPaseoApi(
       },
       archive: (workspace, requestId) =>
         daemonClient.archiveWorkspace(resolveWorkspaceId(workspace), requestId),
+      labels: {
+        list: (options) => daemonClient.listWorkspaceLabels(options),
+        update: (options) => daemonClient.updateWorkspaceLabel(options),
+        set: (workspace, label, assigned, requestId) =>
+          daemonClient.setWorkspaceLabel({
+            workspaceId: resolveWorkspaceId(workspace),
+            label,
+            assigned,
+            requestId,
+          }),
+      },
       subscribe: listenWorkspaces,
     },
     agents: {
@@ -830,6 +896,8 @@ function createWorkspaceHandleFactory(
       current: () => current,
       refresh,
       setTitle: (title, requestId) => daemonClient.setWorkspaceTitle(id, title, requestId),
+      setLabel: (label, assigned, requestId) =>
+        daemonClient.setWorkspaceLabel({ workspaceId: id, label, assigned, requestId }),
       archive: async (requestId) => {
         const result = await daemonClient.archiveWorkspace(id, requestId);
         if (current) {

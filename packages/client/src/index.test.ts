@@ -623,6 +623,107 @@ test("workspace handles keep identity and refresh snapshots through existing dri
   await client.close();
 });
 
+test("workspace labels list, assign, and edit through the existing daemon RPCs", async () => {
+  const { client, ws } = await connectClient();
+
+  const listPromise = client.workspaces.labels.list({
+    sync: { generation: "catalog-1", afterSeq: 3 },
+    requestId: "label-list-request",
+  });
+  expect(parseSentSessionMessage(ws.sent.at(-1))).toMatchObject({
+    type: "workspace.label.list.request",
+    requestId: "label-list-request",
+    sync: { generation: "catalog-1", afterSeq: 3 },
+  });
+  ws.message(
+    sessionMessage({
+      type: "workspace.label.list.response",
+      payload: {
+        requestId: "label-list-request",
+        labels: [{ name: "trusted", color: "sky" }],
+        sync: { mode: "changes", generation: "catalog-1", headSeq: 4, removals: [] },
+      },
+    }),
+  );
+  await expect(listPromise).resolves.toMatchObject({
+    labels: [{ name: "trusted", color: "sky" }],
+  });
+
+  const assignPromise = client.workspaces
+    .ref("workspace_sdk")
+    .setLabel({ name: "trusted", color: "sky" }, true, "label-assign-request");
+  expect(parseSentSessionMessage(ws.sent.at(-1))).toMatchObject({
+    type: "workspace.label.assignment.set.request",
+    requestId: "label-assign-request",
+    workspaceId: "workspace_sdk",
+    label: { name: "trusted", color: "sky" },
+    assigned: true,
+  });
+  ws.message(
+    sessionMessage({
+      type: "workspace.label.assignment.set.response",
+      payload: {
+        requestId: "label-assign-request",
+        label: { name: "trusted", color: "sky" },
+        workspaceLabels: ["trusted"],
+      },
+    }),
+  );
+  await expect(assignPromise).resolves.toMatchObject({ workspaceLabels: ["trusted"] });
+
+  const unassignPromise = client.workspaces.labels.set(
+    "workspace_sdk",
+    { name: "trusted", color: "sky" },
+    false,
+    "label-unassign-request",
+  );
+  expect(parseSentSessionMessage(ws.sent.at(-1))).toMatchObject({
+    type: "workspace.label.assignment.set.request",
+    requestId: "label-unassign-request",
+    workspaceId: "workspace_sdk",
+    assigned: false,
+  });
+  ws.message(
+    sessionMessage({
+      type: "workspace.label.assignment.set.response",
+      payload: {
+        requestId: "label-unassign-request",
+        label: { name: "trusted", color: "sky" },
+        workspaceLabels: [],
+      },
+    }),
+  );
+  await expect(unassignPromise).resolves.toMatchObject({ workspaceLabels: [] });
+
+  const updatePromise = client.workspaces.labels.update({
+    name: "trusted",
+    color: "emerald",
+    requestId: "label-update-request",
+  });
+  expect(parseSentSessionMessage(ws.sent.at(-1))).toEqual({
+    type: "workspace.label.update.request",
+    requestId: "label-update-request",
+    name: "trusted",
+    color: "emerald",
+  });
+  ws.message(
+    sessionMessage({
+      type: "workspace.label.update.response",
+      payload: {
+        requestId: "label-update-request",
+        label: { name: "trusted", color: "emerald" },
+        affectedWorkspaceCount: 2,
+      },
+    }),
+  );
+  await expect(updatePromise).resolves.toMatchObject({
+    label: { name: "trusted", color: "emerald" },
+    affectedWorkspaceCount: 2,
+  });
+
+  await client.close();
+});
+
 test("plugin-shaped PR workspace create and agent create use the existing daemon RPCs", async () => {
   const { client, ws } = await connectClient();
   const createdWorkspace = createWorkspace({ id: "workspace_fresh", name: "Issue 42" });
