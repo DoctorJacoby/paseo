@@ -215,6 +215,7 @@ snapshot so a mixed edit can apply its live subset and still name the paths that
   },
   worktrees?: {
     root?: string            // optional root for new worktrees; defaults to $PASEO_HOME/worktrees
+    teardown?: string | string[],  // host-owned teardown; runs for every worktree after the repo's own
     servicePorts?: {         // optional dynamic service port allocation policy
       range?: string         // inclusive range, e.g. "3000-4000"
       portScript?: string    // executable that receives service/workspace context and prints one TCP port

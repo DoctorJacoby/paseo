@@ -36,6 +36,7 @@ import { runGitCommand } from "./run-git-command.js";
 import { getCurrentBranch, resolveRepositoryDefaultBranch } from "./checkout-git.js";
 import { spawnProcess } from "./spawn.js";
 import { resolvePaseoHome } from "../server/paseo-home.js";
+import { readPersistedConfig } from "../server/persisted-config.js";
 import { createExternalProcessEnv } from "../server/paseo-env.js";
 import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-path.js";
 import {
@@ -275,6 +276,23 @@ export async function getWorktreeSetupCommands(repoRoot: string): Promise<string
 
 export async function getWorktreeTeardownCommands(repoRoot: string): Promise<string[]> {
   return (await readPaseoConfigOrThrow(repoRoot))?.worktree?.teardown ?? [];
+}
+
+/**
+ * Daemon-level teardown commands from `worktrees.teardown` in config.json. These
+ * belong to the host rather than to any repository, so they run for every
+ * worktree the daemon tears down.
+ *
+ * A config the daemon cannot parse is reported when it starts and when it is
+ * written; a teardown is not the place to fail over it, so an unreadable config
+ * means no daemon-level commands.
+ */
+export function getGlobalWorktreeTeardownCommands(paseoHome?: string): string[] {
+  try {
+    return readPersistedConfig(paseoHome ?? resolvePaseoHome()).worktrees?.teardown ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function getWorktreeTerminalSpecs(
@@ -734,13 +752,24 @@ export async function runWorktreeTeardownCommands(options: {
   teardownCwd?: string;
   branchName?: string;
   repoRootPath?: string;
+  /** Where to read `worktrees.teardown` from. Defaults to the resolved Paseo home. */
+  paseoHome?: string;
+  /**
+   * Run only the daemon's `worktrees.teardown` commands. Set when repository
+   * automation is blocked: the repository's own commands are untrusted there,
+   * the host's are not.
+   */
+  skipRepositoryCommands?: boolean;
 }): Promise<WorktreeTeardownCommandResult[]> {
   const teardownCwd = options.teardownCwd ?? options.worktreePath;
   if ((await getOwnershipRelativePath(options.worktreePath, teardownCwd)) === null) {
     throw new Error(`Worktree teardown cwd is outside the worktree: ${teardownCwd}`);
   }
-  const teardownCommands = await getWorktreeTeardownCommands(teardownCwd);
-  if (teardownCommands.length === 0) {
+  const teardownCommands = options.skipRepositoryCommands
+    ? []
+    : await getWorktreeTeardownCommands(teardownCwd);
+  const globalTeardownCommands = getGlobalWorktreeTeardownCommands(options.paseoHome);
+  if (teardownCommands.length === 0 && globalTeardownCommands.length === 0) {
     return [];
   }
 
@@ -765,6 +794,7 @@ export async function runWorktreeTeardownCommands(options: {
   );
 
   const results: WorktreeTeardownCommandResult[] = [];
+  let repositoryFailure: WorktreeTeardownCommandResult | null = null;
   for (const cmd of teardownCommands) {
     const result = await execSetupCommand(cmd, {
       cwd: teardownCwd,
@@ -773,11 +803,25 @@ export async function runWorktreeTeardownCommands(options: {
     results.push(result);
 
     if (result.exitCode !== 0) {
-      throw new WorktreeTeardownError(
-        `Worktree teardown command failed: ${cmd}\n${result.stderr}`.trim(),
-        results,
-      );
+      repositoryFailure = result;
+      break;
     }
+  }
+
+  // The daemon's commands run last and run regardless: they release host-owned
+  // resources, so neither a repository without teardown of its own nor one whose
+  // teardown just failed may keep them from running. A failure here is returned
+  // rather than thrown, so one bad host command cannot veto worktree removal for
+  // every repository on the machine.
+  for (const cmd of globalTeardownCommands) {
+    results.push(await execSetupCommand(cmd, { cwd: teardownCwd, env: teardownEnv }));
+  }
+
+  if (repositoryFailure) {
+    throw new WorktreeTeardownError(
+      `Worktree teardown command failed: ${repositoryFailure.command}\n${repositoryFailure.stderr}`.trim(),
+      results,
+    );
   }
 
   return results;
@@ -1131,6 +1175,7 @@ export async function deletePaseoWorktree({
       await runWorktreeTeardownCommands({
         worktreePath: resolvedWorktree,
         teardownCwd,
+        paseoHome,
       });
     }
   }
