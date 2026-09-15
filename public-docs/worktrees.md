@@ -112,6 +112,22 @@ Both fields accept a multiline shell script or an array of commands; commands ru
 
 Commands run with the worktree as `cwd`. Use `$PASEO_SOURCE_CHECKOUT_PATH` to reach files in the original checkout (untracked config, local caches, etc).
 
+### Host-wide teardown
+
+`worktree.teardown` belongs to one repository, so it only cleans up after repositories that ship it. When your machine attaches something to every worktree — a container, a dev database, a DNS entry — configure it once as `worktrees.teardown` in `config.json`:
+
+```json
+{
+  "worktrees": {
+    "teardown": "my-sandbox down || true"
+  }
+}
+```
+
+These commands run for every worktree Paseo tears down, after the repository's own and with the same `cwd` and environment. They also run for a worktree whose repository automation is blocked, where the repository's own commands are held back — the commands are yours, not the contributor's.
+
+A failing command here is logged and the worktree is still removed, so write one that tolerates a worktree the resource was never created for.
+
 ## Scripts and services
 
 `scripts` are named commands you can run inside a worktree on demand. Mark one as a _service_ and Paseo supervises it as a long-running process, assigns it a port, and routes HTTP traffic to it through the daemon's reverse proxy.
