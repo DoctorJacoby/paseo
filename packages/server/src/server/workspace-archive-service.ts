@@ -365,16 +365,29 @@ async function maybeRemoveDirectory(
   );
 
   try {
-    const allowedTeardownTargets = await filterAllowedTeardownTargets(
-      dependencies,
-      teardownTargets,
-    );
-    for (const teardownTarget of uniqueTeardownTargets(allowedTeardownTargets)) {
-      await runWorktreeTeardownCommands({
+    const isBlocked = await resolveBlockedTeardownCwds(dependencies, teardownTargets);
+    for (const teardownTarget of uniqueTeardownTargets(teardownTargets)) {
+      const results = await runWorktreeTeardownCommands({
         worktreePath: backing.path,
         teardownCwd: teardownTarget.cwd,
         repoRootPath: backing.mainRepoRoot ?? undefined,
+        paseoHome: dependencies.paseoHome,
+        skipRepositoryCommands: isBlocked(teardownTarget.cwd),
       });
+      // Only a daemon-level command can come back non-zero; a repository one throws.
+      for (const result of results) {
+        if (result.exitCode === 0) continue;
+        dependencies.sessionLogger?.warn(
+          {
+            command: result.command,
+            cwd: result.cwd,
+            exitCode: result.exitCode,
+            stderr: result.stderr,
+            requestId: request.requestId,
+          },
+          "Daemon worktree teardown command failed during archive; continuing",
+        );
+      }
     }
   } catch (error) {
     if (error instanceof WorktreeTeardownError) {
@@ -419,25 +432,25 @@ async function maybeRemoveDirectory(
   }
 }
 
-async function filterAllowedTeardownTargets(
+// Reports which teardown cwds belong to a workspace whose repository automation
+// is blocked. Those keep the repository's own teardown commands out; the
+// daemon's still run, so host-owned resources are released for a contributor's
+// change request too.
+async function resolveBlockedTeardownCwds(
   dependencies: ArchiveDependencies,
   targets: Array<{ workspaceId: string | null; cwd: string }>,
-): Promise<Array<{ workspaceId: string | null; cwd: string }>> {
-  const allowed: Array<{ workspaceId: string | null; cwd: string }> = [];
+): Promise<(cwd: string) => boolean> {
   const blockedCwds: string[] = [];
   for (const target of targets) {
     try {
       if (target.workspaceId)
         await dependencies.assertWorkspaceAutomationAllowed?.(target.workspaceId);
-      allowed.push(target);
     } catch (error) {
       if (!(error instanceof WorkspaceAutomationBlockedError)) throw error;
       blockedCwds.push(target.cwd);
     }
   }
-  return allowed.filter(
-    (target) => !blockedCwds.some((cwd) => createRealpathAwarePathMatcher(cwd)(target.cwd)),
-  );
+  return (cwd) => blockedCwds.some((blocked) => createRealpathAwarePathMatcher(blocked)(cwd));
 }
 
 function uniqueTeardownTargets<T extends { cwd: string }>(targets: T[]): T[] {

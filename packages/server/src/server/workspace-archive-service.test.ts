@@ -97,6 +97,27 @@ function createGitRepo(): { tempDir: string; repoDir: string } {
   return { tempDir, repoDir };
 }
 
+function writeRepoTeardownConfig(repoDir: string, teardown: string[]): void {
+  writeFileSync(path.join(repoDir, "paseo.json"), JSON.stringify({ worktree: { teardown } }));
+  execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "teardown"], {
+    cwd: repoDir,
+    stdio: "pipe",
+  });
+}
+
+function writeDaemonTeardownConfig(paseoHome: string, teardown: string[]): void {
+  mkdirSync(paseoHome, { recursive: true });
+  writeFileSync(
+    path.join(paseoHome, "config.json"),
+    JSON.stringify({ version: 1, worktrees: { teardown } }),
+  );
+}
+
+function appendMarkerCommand(marker: string, text: string): string {
+  return `node -e "require('fs').appendFileSync('${marker}', '${text}')"`;
+}
+
 async function createPaseoOwnedWorktree(
   repoDir: string,
   paseoHome: string,
@@ -311,6 +332,211 @@ describe("archiveByScope", () => {
 
     expect(result.archivedWorkspaceIds).toEqual([workspaceId]);
     expect(existsSync(marker)).toBe(false);
+  });
+
+  test("daemon teardown runs for a repository that configures none", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const paseoHome = path.join(tempDir, ".paseo");
+    const marker = path.join(repoDir, "daemon-teardown.json");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "daemon-teardown");
+    writeDaemonTeardownConfig(paseoHome, [
+      `node -e "require('fs').writeFileSync('${marker}', JSON.stringify({cwd: process.cwd(), worktree: process.env.PASEO_WORKTREE_PATH, source: process.env.PASEO_SOURCE_CHECKOUT_PATH, branch: process.env.PASEO_BRANCH_NAME}))"`,
+    ]);
+    const workspaceId = "ws-daemon-teardown";
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        paseoHome,
+        activeWorkspaces: [
+          {
+            workspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isPaseoOwnedWorktree: true,
+            mainRepoRoot: repoDir,
+          },
+        ],
+      }),
+      { scope: { kind: "workspace", workspaceId }, requestId: "req-daemon-teardown" },
+    );
+
+    assertArchiveResult(result, { archivedWorkspaceIds: [workspaceId], removedDirectory: true });
+    const observed = JSON.parse(readFileSync(marker, "utf8")) as Record<string, string>;
+    expect(createRealpathAwarePathMatcher(worktree.worktreePath)(observed.cwd!)).toBe(true);
+    expect(createRealpathAwarePathMatcher(worktree.worktreePath)(observed.worktree!)).toBe(true);
+    expect(createRealpathAwarePathMatcher(repoDir)(observed.source!)).toBe(true);
+    expect(observed.branch).toBe("daemon-teardown");
+  });
+
+  test("daemon teardown runs after the repository's own", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const marker = path.join(repoDir, "teardown-order.log");
+    writeRepoTeardownConfig(repoDir, [appendMarkerCommand(marker, "repo;")]);
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "teardown-order");
+    writeDaemonTeardownConfig(paseoHome, [appendMarkerCommand(marker, "daemon;")]);
+    const workspaceId = "ws-teardown-order";
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        paseoHome,
+        activeWorkspaces: [
+          {
+            workspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isPaseoOwnedWorktree: true,
+            mainRepoRoot: repoDir,
+          },
+        ],
+      }),
+      { scope: { kind: "workspace", workspaceId }, requestId: "req-teardown-order" },
+    );
+
+    assertArchiveResult(result, { archivedWorkspaceIds: [workspaceId], removedDirectory: true });
+    expect(readFileSync(marker, "utf8")).toBe("repo;daemon;");
+  });
+
+  test("daemon teardown runs while repository automation is blocked", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const repoMarker = path.join(repoDir, "blocked-repo-teardown.log");
+    const daemonMarker = path.join(repoDir, "blocked-daemon-teardown.log");
+    writeRepoTeardownConfig(repoDir, [appendMarkerCommand(repoMarker, "unsafe")]);
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "blocked-daemon-teardown");
+    writeDaemonTeardownConfig(paseoHome, [appendMarkerCommand(daemonMarker, "ok")]);
+    const workspaceId = "ws-blocked-daemon-teardown";
+    const deps = createArchiveDeps({
+      paseoHome,
+      activeWorkspaces: [
+        {
+          workspaceId,
+          cwd: worktree.worktreePath,
+          kind: "worktree",
+          worktreeRoot: worktree.worktreePath,
+          isPaseoOwnedWorktree: true,
+          mainRepoRoot: repoDir,
+        },
+      ],
+    });
+    deps.assertWorkspaceAutomationAllowed = async () => {
+      throw new WorkspaceAutomationBlockedError({
+        kind: "change_request",
+        forge: "github",
+        number: 42,
+        headRepository: "contributor/paseo",
+      });
+    };
+
+    const result = await archiveByScope(deps, {
+      scope: { kind: "workspace", workspaceId },
+      requestId: "req-blocked-daemon-teardown",
+    });
+
+    assertArchiveResult(result, { archivedWorkspaceIds: [workspaceId], removedDirectory: true });
+    expect(existsSync(repoMarker)).toBe(false);
+    expect(readFileSync(daemonMarker, "utf8")).toBe("ok");
+  });
+
+  test("a failing daemon teardown command still removes the worktree", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const marker = path.join(repoDir, "failing-daemon-teardown.log");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "failing-daemon-teardown");
+    writeDaemonTeardownConfig(paseoHome, [
+      'node -e "process.exit(3)"',
+      appendMarkerCommand(marker, "after"),
+    ]);
+    const workspaceId = "ws-failing-daemon-teardown";
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        paseoHome,
+        activeWorkspaces: [
+          {
+            workspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isPaseoOwnedWorktree: true,
+            mainRepoRoot: repoDir,
+          },
+        ],
+      }),
+      { scope: { kind: "workspace", workspaceId }, requestId: "req-failing-daemon-teardown" },
+    );
+
+    assertArchiveResult(result, { archivedWorkspaceIds: [workspaceId], removedDirectory: true });
+    expect(existsSync(worktree.worktreePath)).toBe(false);
+    expect(readFileSync(marker, "utf8")).toBe("after");
+  });
+
+  test("daemon teardown runs after the repository's own teardown fails", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const marker = path.join(repoDir, "after-repo-failure.log");
+    writeRepoTeardownConfig(repoDir, ['node -e "process.exit(4)"']);
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "after-repo-failure");
+    writeDaemonTeardownConfig(paseoHome, [appendMarkerCommand(marker, "ok")]);
+    const workspaceId = "ws-after-repo-failure";
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        paseoHome,
+        activeWorkspaces: [
+          {
+            workspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isPaseoOwnedWorktree: true,
+            mainRepoRoot: repoDir,
+          },
+        ],
+      }),
+      { scope: { kind: "workspace", workspaceId }, requestId: "req-after-repo-failure" },
+    );
+
+    // A failed repository teardown keeps the directory, as it always has.
+    assertArchiveResult(result, { archivedWorkspaceIds: [workspaceId], removedDirectory: false });
+    expect(existsSync(worktree.worktreePath)).toBe(true);
+    expect(readFileSync(marker, "utf8")).toBe("ok");
+  });
+
+  test("a daemon config without worktrees.teardown archives exactly as before", async () => {
+    const { tempDir, repoDir } = createGitRepo();
+    const marker = path.join(repoDir, "repo-only-teardown.log");
+    writeRepoTeardownConfig(repoDir, [appendMarkerCommand(marker, "repo")]);
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "repo-only-teardown");
+    mkdirSync(paseoHome, { recursive: true });
+    writeFileSync(
+      path.join(paseoHome, "config.json"),
+      JSON.stringify({ version: 1, worktrees: { root: path.join(tempDir, "unused-worktrees") } }),
+    );
+    const workspaceId = "ws-repo-only-teardown";
+
+    const result = await archiveByScope(
+      createArchiveDeps({
+        paseoHome,
+        activeWorkspaces: [
+          {
+            workspaceId,
+            cwd: worktree.worktreePath,
+            kind: "worktree",
+            worktreeRoot: worktree.worktreePath,
+            isPaseoOwnedWorktree: true,
+            mainRepoRoot: repoDir,
+          },
+        ],
+      }),
+      { scope: { kind: "workspace", workspaceId }, requestId: "req-repo-only-teardown" },
+    );
+
+    assertArchiveResult(result, { archivedWorkspaceIds: [workspaceId], removedDirectory: true });
+    expect(readFileSync(marker, "utf8")).toBe("repo");
   });
 
   test("workspace scope keeps a worktree for an active workspace in a subdirectory", async () => {
