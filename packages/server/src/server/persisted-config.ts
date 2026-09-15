@@ -13,7 +13,10 @@ import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.j
 import { AgentProfileSchema, AgentSkillSelectionSchema } from "@getpaseo/protocol/agent-profile";
 import { PluginIdSchema, PluginSourceSchema } from "@getpaseo/protocol/plugin-config";
 import { TerminalProfileSchema } from "@getpaseo/protocol/terminal-profile";
-import { PaseoServicePortAllocationSchema } from "@getpaseo/protocol/paseo-config-schema";
+import {
+  normalizeLifecycleCommands,
+  PaseoServicePortAllocationSchema,
+} from "@getpaseo/protocol/paseo-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -82,6 +85,15 @@ const WorktreesConfigSchema = z
   .object({
     root: z.string().min(1).optional(),
     servicePorts: PaseoServicePortAllocationSchema.optional(),
+    // Host-owned teardown, in the same shape as `worktree.teardown` in paseo.json.
+    // A repository can only clean up what it knows about; resources the host
+    // attaches to a worktree (containers, dev databases, DNS entries) outlive
+    // every repository that never shipped a teardown script. These commands run
+    // for every worktree the daemon tears down, after the repository's own.
+    teardown: z
+      .union([z.string(), z.array(z.string())])
+      .transform(normalizeLifecycleCommands)
+      .optional(),
   })
   .strict();
 

@@ -98,6 +98,8 @@ New worktrees are created under `$PASEO_HOME/worktrees` by default. To place new
 
 Relative paths are resolved against `PASEO_HOME`. Existing worktrees remain where they are; changing this setting only changes where Paseo creates and discovers Paseo-managed worktrees going forward.
 
+`worktrees.teardown` holds commands that run for every worktree this daemon tears down, whatever repository it came from. See [Host-wide teardown](/docs/worktrees#host-wide-teardown).
+
 ## Voice
 
 Voice is configured through `features.dictation` and `features.voiceMode`, with provider credentials under `providers`.
