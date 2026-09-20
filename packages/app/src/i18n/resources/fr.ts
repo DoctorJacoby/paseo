@@ -2244,6 +2244,11 @@ export const fr: TranslationResources = {
       title: "Éditeur",
       vimKeybindings: "Raccourcis Vim",
       vimHint: "S’applique aux fichiers source dans l’app web et l’app de bureau.",
+      fileOpen: {
+        label: "Ouvrir les fichiers avec",
+        hint: "Où s’ouvre une référence de fichier de la conversation.",
+        builtin: "Visionneuse de fichiers Paseo",
+      },
     },
     files: {
       title: "Fichiers",

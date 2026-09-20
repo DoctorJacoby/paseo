@@ -34,6 +34,7 @@ function installed(): InstalledPlugin {
     commandCenterItems: [],
     clientSlashCommands: [],
     attachmentSources: [],
+    fileOpenHandlers: [],
     themes: [],
     timelineTransformers: [],
     timelineRenderers: [],

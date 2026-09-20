@@ -2229,6 +2229,11 @@ export const ru: TranslationResources = {
       title: "Редактор",
       vimKeybindings: "Сочетания клавиш Vim",
       vimHint: "Применяется к исходным файлам в веб- и настольной версии.",
+      fileOpen: {
+        label: "Открывать файлы через",
+        hint: "Где открывается ссылка на файл из переписки.",
+        builtin: "Просмотрщик файлов Paseo",
+      },
     },
     files: {
       title: "Файлы",

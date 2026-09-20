@@ -40,6 +40,7 @@ function installation(invoked: string[]): InstalledPlugin {
     commandCenterItems: [],
     clientSlashCommands: [],
     attachmentSources: [],
+    fileOpenHandlers: [],
     themes: [],
     timelineTransformers: [],
     timelineRenderers: [],

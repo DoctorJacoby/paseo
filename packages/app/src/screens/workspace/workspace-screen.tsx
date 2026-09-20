@@ -215,7 +215,10 @@ import {
   WorkspaceHeaderMenuMobile,
 } from "@/screens/workspace/workspace-header-menu";
 import { PluginHeaderButtons } from "@/plugins";
+import { routeWorkspaceFileOpen } from "@/plugins/file-open";
+import { useInstalledPlugins } from "@/plugins/registry";
 import {
+  BUILTIN_FILE_OPEN_HANDLER_ID,
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
   type OpenFileDisposition,
@@ -227,6 +230,14 @@ import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-ch
 import { useWorkspacePullRequestDiscovery } from "@/panels/pull-request";
 
 const NO_SHEETS: readonly SheetTab[] = [];
+
+interface OpenWorkspaceFileFromPaneInput {
+  request: WorkspaceFileOpenRequest;
+  paneId?: string | null;
+  parentTabId: string;
+  focusPaneBeforeOpen?: boolean;
+}
+
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
 const EMPTY_WORKSPACE_SCRIPTS: WorkspaceDescriptor["scripts"] = [];
@@ -1347,6 +1358,8 @@ function WorkspaceScreenContent({
   );
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
   const pullRequestOpenLocation = useSettings((settings) => settings.pullRequestOpenLocation);
+  const fileOpenHandlerId = useSettings((settings) => settings.fileOpenHandlerId);
+  const installedPlugins = useInstalledPlugins();
   const selectWorkspaceTabInPane = useWorkspaceLayoutStore((state) => state.selectTabInPane);
   const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const sheets = useWorkspaceLayoutStore((state) =>
@@ -1705,17 +1718,12 @@ function WorkspaceScreenContent({
     [openInSidePane, persistenceKey],
   );
 
-  const handleOpenWorkspaceFileFromPane = useStableEvent(function handleOpenWorkspaceFileFromPane({
+  const openWorkspaceFileInPane = useStableEvent(function openWorkspaceFileInPane({
     request,
     paneId,
     parentTabId,
     focusPaneBeforeOpen,
-  }: {
-    request: WorkspaceFileOpenRequest;
-    paneId?: string | null;
-    parentTabId: string;
-    focusPaneBeforeOpen?: boolean;
-  }) {
+  }: OpenWorkspaceFileFromPaneInput) {
     if (focusPaneBeforeOpen && paneId && persistenceKey) {
       focusWorkspacePane(persistenceKey, paneId);
     }
@@ -1737,6 +1745,32 @@ function WorkspaceScreenContent({
       return;
     }
     handleOpenFileFromChat(request.location, parentTabId);
+  });
+
+  const handleOpenWorkspaceFileFromPane = useStableEvent(function handleOpenWorkspaceFileFromPane(
+    input: OpenWorkspaceFileFromPaneInput,
+  ) {
+    // The chosen file-open handler gets first refusal on the reference, and only for the
+    // implicit opens this function serves -- a transcript link, a tool call's file chip,
+    // a path in the terminal. Anything it declines, and every explicit open from the
+    // explorer or a diff, lands in the file pane exactly as it always did.
+    if (fileOpenHandlerId === BUILTIN_FILE_OPEN_HANDLER_ID || !workspaceDirectory) {
+      openWorkspaceFileInPane(input);
+      return;
+    }
+    const routed = routeWorkspaceFileOpen({
+      plugins: installedPlugins,
+      serverId: normalizedServerId,
+      handlerId: fileOpenHandlerId,
+      target: {
+        workspaceId: normalizedWorkspaceId,
+        directory: workspaceDirectory,
+        location: input.request.location,
+      },
+    });
+    void (async () => {
+      if (!(await routed)) openWorkspaceFileInPane(input);
+    })();
   });
 
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
