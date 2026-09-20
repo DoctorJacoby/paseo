@@ -20,6 +20,7 @@ import {
   type PluginCommandCenterItemContribution,
   type PluginClientContext,
   type PluginClientSlashCommandContribution,
+  type PluginFileOpenHandlerContribution,
   type PluginSidebarContribution,
   type PluginSurfaceProps,
   type PluginTimelineRendererContribution,
@@ -29,6 +30,7 @@ import {
 } from "@getpaseo/plugin/client";
 import type { EvaluatedPlugin } from "./types";
 import type { ComponentType } from "react";
+import { BUILTIN_FILE_OPEN_HANDLER_ID } from "@/workspace/file-open";
 import { resolvePluginIcon } from "./icons";
 import { pluginReactNativeRuntime } from "./react-native/runtime";
 import { parsePluginThemeContribution } from "./themes";
@@ -96,6 +98,7 @@ export function runPluginClientBundle(
     commandCenterItems: [],
     clientSlashCommands: [],
     attachmentSources: [],
+    fileOpenHandlers: [],
     themes: [],
     timelineTransformers: [],
     timelineRenderers: [],
@@ -107,6 +110,7 @@ export function runPluginClientBundle(
   const commandCenterItemIds = new Set<string>();
   const clientSlashCommandNames = new Set<string>();
   const attachmentSourceIds = new Set<string>();
+  const fileOpenHandlerIds = new Set<string>();
   const themeIds = new Set<string>();
   const timelineTransformerIds = new Set<string>();
   const timelineRendererIds = new Set<string>();
@@ -310,6 +314,29 @@ export function runPluginClientBundle(
         () => attachmentSourceIds.delete(normalizedId),
       );
     },
+    registerFileOpenHandler(contribution: PluginFileOpenHandlerContribution) {
+      const normalizedId = requireId(contribution.id, "file open handler id");
+      if (normalizedId === BUILTIN_FILE_OPEN_HANDLER_ID) {
+        throw new Error(`File open handler ${normalizedId} is the built-in viewer's id`);
+      }
+      if (fileOpenHandlerIds.has(normalizedId)) {
+        throw new Error(`Duplicate file open handler: ${normalizedId}`);
+      }
+      const label = contribution.label.trim();
+      if (!label) throw new Error(`File open handler ${normalizedId} has no label`);
+      if (typeof contribution.open !== "function") {
+        throw new Error(`File open handler ${normalizedId} has no open callback`);
+      }
+      if (contribution.canOpen !== undefined && typeof contribution.canOpen !== "function") {
+        throw new Error(`File open handler ${normalizedId} has an invalid canOpen`);
+      }
+      fileOpenHandlerIds.add(normalizedId);
+      return register(
+        collector.fileOpenHandlers,
+        { ...contribution, id: normalizedId, label },
+        () => fileOpenHandlerIds.delete(normalizedId),
+      );
+    },
     addTheme(contribution: PluginThemeContribution) {
       const normalizedId = requireId(contribution.id, "theme id");
       if (themeIds.has(normalizedId)) throw new Error(`Duplicate theme: ${normalizedId}`);
@@ -452,6 +479,7 @@ export function runPluginClientBundle(
     commandCenterItems: collector.commandCenterItems,
     clientSlashCommands: collector.clientSlashCommands,
     attachmentSources: collector.attachmentSources,
+    fileOpenHandlers: collector.fileOpenHandlers,
     themes: collector.themes,
     timelineTransformers: collector.timelineTransformers,
     timelineRenderers: collector.timelineRenderers,

@@ -1991,6 +1991,11 @@ export const ja: TranslationResources = {
       title: "エディター",
       vimKeybindings: "Vim キーバインド",
       vimHint: "Web とデスクトップのソースファイルに適用されます。",
+      fileOpen: {
+        label: "ファイルを開く方法",
+        hint: "トランスクリプトのファイル参照をどこで開くか。",
+        builtin: "Paseo のファイルビューアー",
+      },
     },
     notifications: {
       title: "通知",

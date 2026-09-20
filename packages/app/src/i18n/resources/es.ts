@@ -2019,6 +2019,11 @@ export const es: TranslationResources = {
       title: "Editor",
       vimKeybindings: "Atajos de Vim",
       vimHint: "Se aplica a archivos fuente en web y escritorio.",
+      fileOpen: {
+        label: "Abrir archivos con",
+        hint: "Dónde se abre una referencia de archivo de la conversación.",
+        builtin: "Visor de archivos de Paseo",
+      },
     },
     notifications: {
       title: "Notificaciones",

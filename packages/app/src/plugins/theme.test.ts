@@ -58,6 +58,7 @@ function installed(serverId: string, themes: PluginThemeContribution[]): Install
     commandCenterItems: [],
     clientSlashCommands: [],
     attachmentSources: [],
+    fileOpenHandlers: [],
     themes,
     timelineTransformers: [],
     timelineRenderers: [],

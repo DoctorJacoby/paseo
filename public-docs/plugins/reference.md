@@ -1872,6 +1872,33 @@ export default function contribute(server: PluginServerContext) {
 
 Paseo owns the composer menu, search picker, selected pill, draft state, and submission. The `text` value is the complete snapshot sent to the agent.
 
+## Take over opening a file
+
+A file-open handler claims the file references a user clicks — a path in an assistant message, the file chip on a tool call, a path in terminal output — so they land somewhere other than Paseo's own file pane.
+
+`index.client.tsx`:
+
+```ts
+import type { PluginClientContext, PluginFileOpenRequest } from "@getpaseo/plugin/client";
+
+export default function contribute(client: PluginClientContext) {
+  return client.registerFileOpenHandler({
+    id: "cell-editor",
+    label: "Cell editor",
+    canOpen: (request) => request.path.startsWith(request.directory),
+    open: async (request: PluginFileOpenRequest) => {
+      await openWorkbenchAt(request.workspaceId, request.path, request.line);
+    },
+  });
+}
+```
+
+`open` receives the workspace's id, its directory on the host, an absolute path where one can be derived from the reference, and the line and column the reference named when it named them.
+
+Registering a handler does not take anything over by itself: the user picks it in **Settings → Editor → Open files with**, which lists the built-in viewer and every registered handler. The built-in viewer is the fallback throughout — for a handler the setting names but no connected host registers, for one whose `canOpen` returns `false`, and for one whose `open` throws. Handlers are resolved against the workspace's own host, so a handler registered on another connection does not answer for it. `builtin` is the built-in viewer's id and is refused as a handler id.
+
+Explicit opens — a row in the file explorer, a file header in a diff, a Command Center result — always use the built-in pane; a handler only sees the references a user follows out of a conversation.
+
 ## Hosts and lifecycle
 
 Plugins are installed per daemon. When the same contribution exists on several connected hosts, Paseo shows one sidebar item and adds a host picker. The selected host supplies the bundle, Paseo API, RPC transport, and query cache. Calls never fall through to another host when the selected host is offline.
