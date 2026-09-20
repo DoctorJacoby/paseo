@@ -25,6 +25,7 @@ function installed(serverId: string, contributionId = "main"): InstalledPlugin {
     commandCenterItems: [],
     clientSlashCommands: [],
     attachmentSources: [],
+    fileOpenHandlers: [],
     themes: [],
     timelineTransformers: [],
     timelineRenderers: [],

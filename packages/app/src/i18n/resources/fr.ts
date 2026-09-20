@@ -1989,6 +1989,11 @@ export const fr: TranslationResources = {
       title: "Éditeur",
       vimKeybindings: "Raccourcis Vim",
       vimHint: "S’applique aux fichiers source sur le web et le bureau.",
+      fileOpen: {
+        label: "Ouvrir les fichiers avec",
+        hint: "Où s’ouvre une référence de fichier de la conversation.",
+        builtin: "Visionneuse de fichiers Paseo",
+      },
     },
     notifications: {
       title: "Notifications",

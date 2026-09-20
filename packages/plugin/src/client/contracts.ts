@@ -75,6 +75,26 @@ export interface PluginClientOpenPanelOptions extends PluginOpenPanelOptions {
   agentId?: string;
 }
 
+/** Where a file reference points, resolved against the workspace it was clicked in. */
+export interface PluginFileOpenRequest {
+  readonly workspaceId: string;
+  /** The workspace's own directory on the host, so a handler need not look it up. */
+  readonly directory: string;
+  /** Absolute host path where one can be derived, otherwise the reference as written. */
+  readonly path: string;
+  readonly line?: number;
+  readonly column?: number;
+}
+
+export interface PluginFileOpenHandlerContribution {
+  id: string;
+  /** Shown in the client's file-open setting, beside the built-in viewer. */
+  label: string;
+  /** Asked before every open; a handler that cannot take this file leaves it to the built-in one. */
+  canOpen?(request: PluginFileOpenRequest): boolean;
+  open(request: PluginFileOpenRequest): void | Promise<void>;
+}
+
 export interface PluginClientContext extends PluginCommandCapabilities {
   addSettingsScreen(contribution: PluginSettingsScreenContribution): PluginCleanup;
   addSurface(id: string, Component: ComponentType<PluginSurfaceProps>): PluginCleanup;
@@ -85,6 +105,7 @@ export interface PluginClientContext extends PluginCommandCapabilities {
   addHeaderButton(contribution: PluginHeaderButtonContribution): PluginButtonRegistration;
   addComposerPill(contribution: PluginComposerPillContribution): PluginButtonRegistration;
   addAttachmentSource(contribution: PluginAttachmentSourceContribution): PluginCleanup;
+  registerFileOpenHandler(contribution: PluginFileOpenHandlerContribution): PluginCleanup;
   addTheme(contribution: PluginThemeContribution): PluginCleanup;
   addTimelineTransformer<ItemType extends AgentTimelineItem["type"]>(
     contribution: PluginTimelineTransformerContribution<ItemType>,
