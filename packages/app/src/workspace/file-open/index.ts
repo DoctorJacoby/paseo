@@ -2,6 +2,12 @@ import { isAbsolutePath } from "@/utils/path";
 
 export type OpenFileDisposition = "main" | "preferred" | "side";
 
+/**
+ * The file-open setting's value when files open in Paseo's own file pane. Anything else
+ * names a handler a plugin registered, and is reserved as an id no plugin may take.
+ */
+export const BUILTIN_FILE_OPEN_HANDLER_ID = "builtin";
+
 export interface WorkspaceFileLocation {
   path: string;
   lineStart?: number;

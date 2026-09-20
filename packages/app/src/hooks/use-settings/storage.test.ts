@@ -24,6 +24,7 @@ import {
   SIDEBAR_ROW_ITEMS,
 } from "@/components/sidebar/display-preferences/row-items";
 import { DEFAULT_CONTENT_MAX_WIDTH, THEME_OPTIONS } from "@/styles/theme";
+import { BUILTIN_FILE_OPEN_HANDLER_ID } from "@/workspace/file-open";
 
 const LEGACY_SETTINGS_KEY = "@paseo:settings";
 
@@ -359,6 +360,28 @@ describe("loadAppSettingsFromStorage", () => {
     expect(defaults.pullRequestOpenLocation).toBe("explorer");
     expect(legacySide.pullRequestOpenLocation).toBe("side");
     expect(legacySide.openInSidePane).not.toHaveProperty("pullRequests");
+  });
+
+  it("opens files in the built-in pane until a handler is named", async () => {
+    const defaults = await loadAppSettingsFromStorage(makeDeps());
+    const chosen = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ fileOpenHandlerId: " cell-editor " }),
+        }),
+      }),
+    );
+    const unusable = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ fileOpenHandlerId: 7 }),
+        }),
+      }),
+    );
+
+    expect(defaults.fileOpenHandlerId).toBe(BUILTIN_FILE_OPEN_HANDLER_ID);
+    expect(chosen.fileOpenHandlerId).toBe("cell-editor");
+    expect(unusable.fileOpenHandlerId).toBe(BUILTIN_FILE_OPEN_HANDLER_ID);
   });
 
   it("uses the native terminal renderer by default", async () => {

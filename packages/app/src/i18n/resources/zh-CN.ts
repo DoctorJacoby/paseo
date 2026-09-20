@@ -2034,6 +2034,11 @@ export const zhCN: TranslationResources = {
       title: "编辑器",
       vimKeybindings: "Vim 键位",
       vimHint: "适用于网页和桌面端的源文件。",
+      fileOpen: {
+        label: "打开文件的方式",
+        hint: "对话中的文件引用在哪里打开。",
+        builtin: "Paseo 文件查看器",
+      },
     },
     notifications: {
       title: "通知",

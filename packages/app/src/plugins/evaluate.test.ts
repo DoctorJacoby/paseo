@@ -82,6 +82,7 @@ describe("evaluatePluginClientBundle", () => {
           plugin.addSlashCommand({ name: "review", description: "Review", argumentHint: "", context: "workspace", onSubmit() {} }),
           plugin.addComposerPill({ id: "pill", workspaceId: "workspace", agentId: "agent", button: { title: "Pill", icon: "Scan", behavior: { kind: "action", onPress() {} } } }).remove,
           plugin.addAttachmentSource({ id: "issues", title: "Issues", icon: "Blocks", pickerTitle: "Attach issue", searchPlaceholder: "Search", search: { name: "issues.search", input: {}, output: {} } }),
+          plugin.registerFileOpenHandler({ id: "cell-editor", label: "Cell editor", open() {} }),
           plugin.addTheme({ id: "night", name: "Night", appearance: "dark", colors: { background: "#000", foreground: "#fff", raised: "#111", control: "#222", border: "#333", mutedForeground: "#aaa", ring: "#555" } }),
           plugin.addTimelineTransformer({ id: "transformer", query: { itemType: "tool_call" }, transform() { return { items: [] }; } }),
           plugin.addTimelineRenderer({ kind: "card", version: 1, schema, Component }),
@@ -112,6 +113,7 @@ describe("evaluatePluginClientBundle", () => {
         plugin.commandCenterItems,
         plugin.clientSlashCommands,
         plugin.attachmentSources,
+        plugin.fileOpenHandlers,
         plugin.themes,
         plugin.timelineTransformers,
         plugin.timelineRenderers,
@@ -132,6 +134,7 @@ describe("evaluatePluginClientBundle", () => {
         plugin.commandCenterItems,
         plugin.clientSlashCommands,
         plugin.attachmentSources,
+        plugin.fileOpenHandlers,
         plugin.themes,
         plugin.timelineTransformers,
         plugin.timelineRenderers,
@@ -330,6 +333,57 @@ describe("evaluatePluginClientBundle", () => {
         search: { name: "issues.search", input: {}, output: {} },
       },
     ]);
+  });
+
+  it("collects a file open handler and normalizes its id and label", () => {
+    const plugin = evaluatePluginClientBundle(
+      "cell-editor",
+      bundle(`
+        plugin.registerFileOpenHandler({
+          id: " cell-editor ",
+          label: " Cell editor ",
+          canOpen(request) { return request.path.endsWith(".ts"); },
+          open() {},
+        });
+      `),
+    );
+
+    expect(plugin.fileOpenHandlers.map((handler) => [handler.id, handler.label])).toEqual([
+      ["cell-editor", "Cell editor"],
+    ]);
+    const [handler] = plugin.fileOpenHandlers;
+    expect(
+      handler.canOpen?.({
+        workspaceId: "workspace",
+        directory: "/srv/checkout",
+        path: "/srv/checkout/src/index.ts",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects file open handlers the client could never route to", () => {
+    const reject = (body: string) => () => evaluatePluginClientBundle("cell-editor", bundle(body));
+
+    expect(
+      reject(`plugin.registerFileOpenHandler({ id: "builtin", label: "Cell editor", open() {} });`),
+    ).toThrow("File open handler builtin is the built-in viewer's id");
+    expect(
+      reject(`plugin.registerFileOpenHandler({ id: "cell-editor", label: " ", open() {} });`),
+    ).toThrow("File open handler cell-editor has no label");
+    expect(
+      reject(`plugin.registerFileOpenHandler({ id: "cell-editor", label: "Cell editor" });`),
+    ).toThrow("File open handler cell-editor has no open callback");
+    expect(
+      reject(
+        `plugin.registerFileOpenHandler({ id: "cell-editor", label: "Cell editor", canOpen: "yes", open() {} });`,
+      ),
+    ).toThrow("File open handler cell-editor has an invalid canOpen");
+    expect(
+      reject(`
+        plugin.registerFileOpenHandler({ id: "cell-editor", label: "Cell editor", open() {} });
+        plugin.registerFileOpenHandler({ id: "cell-editor", label: "Again", open() {} });
+      `),
+    ).toThrow("Duplicate file open handler: cell-editor");
   });
 
   it("collects contextual workspace panels and Command Center items", () => {

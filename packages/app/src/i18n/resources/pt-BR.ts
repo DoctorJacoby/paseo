@@ -2089,6 +2089,11 @@ export const ptBR: TranslationResources = {
       title: "Editor",
       vimKeybindings: "Atalhos do Vim",
       vimHint: "Aplica-se a arquivos-fonte na web e no desktop.",
+      fileOpen: {
+        label: "Abrir arquivos com",
+        hint: "Onde uma referência de arquivo da conversa é aberta.",
+        builtin: "Visualizador de arquivos do Paseo",
+      },
     },
     notifications: {
       title: "Notificações",

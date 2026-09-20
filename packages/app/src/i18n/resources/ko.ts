@@ -2066,6 +2066,11 @@ export const ko: TranslationResources = {
       title: "편집기",
       vimKeybindings: "Vim 키 바인딩",
       vimHint: "웹 및 데스크톱의 소스 파일에 적용됩니다.",
+      fileOpen: {
+        label: "파일 열기 방식",
+        hint: "대화 기록의 파일 참조를 어디에서 열지 결정합니다.",
+        builtin: "Paseo 파일 뷰어",
+      },
     },
     notifications: {
       title: "알림",

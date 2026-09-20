@@ -2119,6 +2119,11 @@ export const en = {
       title: "Editor",
       vimKeybindings: "Vim keybindings",
       vimHint: "Applies to source files on web and desktop.",
+      fileOpen: {
+        label: "Open files with",
+        hint: "Where a file reference from the transcript opens.",
+        builtin: "Paseo file viewer",
+      },
     },
     notifications: {
       title: "Notifications",

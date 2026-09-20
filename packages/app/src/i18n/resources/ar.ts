@@ -2056,6 +2056,11 @@ export const ar: TranslationResources = {
       title: "المحرر",
       vimKeybindings: "اختصارات Vim",
       vimHint: "تنطبق على ملفات المصدر في الويب وسطح المكتب.",
+      fileOpen: {
+        label: "فتح الملفات باستخدام",
+        hint: "أين يُفتح مرجع ملف من المحادثة.",
+        builtin: "عارض ملفات Paseo",
+      },
     },
     notifications: {
       title: "الإشعارات",
