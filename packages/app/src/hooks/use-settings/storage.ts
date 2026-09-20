@@ -14,6 +14,7 @@ import {
   type SidebarRowItems,
 } from "@/components/sidebar/display-preferences/row-items";
 import { isNative } from "@/constants/platform";
+import { BUILTIN_FILE_OPEN_HANDLER_ID } from "@/workspace/file-open";
 import {
   FONT_SIZE,
   PLUGIN_THEME_PREFERENCE,
@@ -89,6 +90,12 @@ export interface AppSettings {
   toolCallDetailLevel: ToolCallDetailLevel;
   chatOutlineEnabled: boolean;
   vimKeybindings: boolean;
+  /**
+   * Where a clicked file reference opens: `"builtin"` is Paseo's own file pane, anything
+   * else is the id of a handler a plugin registered. An id nothing answers to falls back
+   * to the built-in pane rather than doing nothing.
+   */
+  fileOpenHandlerId: string;
   /** Desktop-only preferences for implicit opens into the ordinary side pane. */
   openInSidePane: OpenInSidePanePreferences;
   pullRequestOpenLocation: PullRequestOpenLocation;
@@ -142,6 +149,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   toolCallDetailLevel: "detailed",
   chatOutlineEnabled: true,
   vimKeybindings: false,
+  fileOpenHandlerId: BUILTIN_FILE_OPEN_HANDLER_ID,
   openInSidePane: DEFAULT_OPEN_IN_SIDE_PANE_PREFERENCES,
   pullRequestOpenLocation: "explorer",
 };
@@ -237,6 +245,9 @@ const StoredAppSettingsSchema = z
     compactToolCalls: z.boolean().optional().catch(undefined),
     chatOutlineEnabled: z.boolean().catch(true),
     vimKeybindings: z.boolean().catch(false),
+    // A plugin's handler id is not knowable here, so the shape is checked and the name is
+    // not -- the picker and the router both resolve an unknown one to the built-in pane.
+    fileOpenHandlerId: z.string().trim().min(1).catch(BUILTIN_FILE_OPEN_HANDLER_ID),
     openInSidePane: z
       .object({
         explorerFiles: z.boolean().catch(false),
